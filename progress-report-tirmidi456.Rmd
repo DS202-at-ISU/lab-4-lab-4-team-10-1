@@ -1,0 +1,115 @@
+---
+title: "Lab #4 - Hall of Fame Scraping"
+author: "Tirmidi Mohamed"
+output: html_document
+---
+
+## 1. Setup
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rvest)
+library(dplyr)
+library(readr)
+library(Lahman)
+library(ggplot2)
+```
+
+## 2. Load the Webpage and Preview
+
+```{r scrape}
+url <- "https://www.baseball-reference.com/awards/hof_2025.shtml"
+html <- read_html(url)
+tables <- html_table(html)
+head(tables[[1]], 3)
+```
+
+## 3. Clean the Column Names (if needed)
+
+```{r clean-names}
+data <- tables[[1]]
+actual_col_names <- data[1, ]
+colnames(data) <- actual_col_names
+data <- data[-1, ]
+head(data, 3)
+```
+
+## 4. Data Cleaning
+
+```{r cleaning}
+# Example cleaning steps:
+data$Votes <- readr::parse_number(data$Votes)
+data$`%vote` <- readr::parse_number(data$`%vote`)
+data$Name <- gsub("X-", "", data$Name)
+data$Name <- gsub("\\.", "", data$Name)    # Remove periods
+data$Name <- gsub("  ", " ", data$Name)    # Fix double spaces
+head(data, 3)
+```
+
+## 5. Match Name to playerID
+
+```{r match-playerid}
+
+manual_ids <- c(
+  "Ichiro Suzuki" = "suzukic01",
+  "CC Sabathia" = "sabathc01",
+  "Billy Wagner" = "wagnebi02"
+)
+
+# Assign the matching ID to each row using the Name
+data$playerID <- manual_ids[data$Name]
+
+# Preview to confirm playerIDs were added
+data[, c("Name", "playerID")]
+
+```
+
+## 6. Format Data to Match HallOfFame
+
+```{r format-hof}
+
+HallOfFame_2025 <- data.frame(
+  playerID = data$playerID,
+  yearID = 2025,
+  votedBy = "BBWAA",
+  ballots = as.numeric(data$Votes),
+  needed = NA,
+  votes = as.numeric(data$Votes),
+  inducted = ifelse(as.numeric(data$`%vote`) >= 75, "Y", "N"),
+  category = "Player"
+)
+
+# Preview the new Hall of Fame entries
+head(HallOfFame_2025)
+```
+
+## 7. Combine with Existing Data
+
+```{r combine}
+HallOfFame_extended <- bind_rows(HallOfFame, HallOfFame_2025)
+```
+
+## 8. Visualization
+
+```{r plot}
+HallOfFame_extended %>%
+  ggplot(aes(x = yearID, fill = inducted)) +
+  geom_bar() +
+  xlim(c(1936, 2025))
+```
+
+## 9. Export Final CSV
+
+```{r export}
+write.csv(HallOfFame_extended, "HallOfFame.csv", row.names = FALSE)
+```
+
+## 10. Notes
+
+- First, I scraped the Hall of Fame voting data for 2025 from the baseball-reference.com site.
+- Some of the scraped columns had extra spaces or formatting issues, so I cleaned those up using `trimws()` and by renaming columns.
+- I found that the names in the scraped data didn't match directly with the names in the Lahman `People` table, so I couldn't do a normal `left_join()` to get the `playerID`.
+- To fix that, I manually assigned playerIDs for the known 2025 candidates (like Ichiro Suzuki, CC Sabathia, and Billy Wagner).
+- Once that was done, I used those IDs to create new Hall of Fame rows that match the structure of the Lahman `HallOfFame` table.
+- Finally, I combined that new data with the original Hall of Fame dataset and exported everything to a `HallOfFame.csv` file.
+
