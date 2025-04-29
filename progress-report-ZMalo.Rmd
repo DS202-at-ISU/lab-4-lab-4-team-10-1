@@ -1,0 +1,89 @@
+---
+title: "progress-report-ZMalo"
+author: "Zachary Malo"
+date: "2025-04-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##Shape of HallOfFame Data
+
+```{r lahman shape, include = True}
+library(Lahman)
+HallOfFameTable<-HallOfFame
+head(HallOfFame, 3)
+```
+
+##Reading data
+```{r reading data, include = True}
+library(rvest)
+hof <- "https://www.baseball-reference.com/awards/hof_2025.shtml"
+html <- read_html(hof)
+hof_tbl <- html %>% html_table()
+bbwaa <- hof_tbl[[1]]
+head(bbwaa)
+```
+
+## Changing Column Names
+```{r column names, include = True}
+actual_col_names <- bbwaa[1, ]
+colnames(bbwaa) <- actual_col_names
+bbwaa <- bbwaa[-1, ]
+head(bbwaa, 3)
+```
+
+##Changing Numeric Columns removing uneeded columns
+```{r column numeric, include = True}
+bbwaa$Votes <- as.numeric(bbwaa$Votes)
+bbwaa<-bbwaa %>% select(Name,Votes)
+bbwaa$Name<-gsub("X-", "",bbwaa$Name)
+head(bbwaa,3)
+```
+##Cleaning names
+```{r cleaning names, include = True}
+library(tidyverse)
+##removing X-s
+bbwaa$Name<-gsub("X-", "",bbwaa$Name)
+##removing accents
+bbwaa<-bbwaa %>%mutate(Name = stringi::stri_trans_general(str = Name, id = "Latin-ASCII"))%>%rename("First Lastname"=Name)
+head(bbwaa,3)
+```
+
+##name to player id
+```{r player id, include = True}
+People <- People %>% mutate(
+  `First Lastname`=paste(`nameFirst`, `nameLast`)
+)
+player_id<-bbwaa%>%left_join(People,by="First Lastname")
+##Franciso Rodriguez duplication removed assumed the guy who only played for a year not in hall of fame voting
+player_id<-player_id[-c(17),]
+head(player_id,3)
+bbwaa$`First Lastname`<-player_id$playerID
+head(bbwaa,3)
+```
+##Putting into lahman HallOfFame shape
+```{r shape, include = True}
+bbwaa <- bbwaa %>% mutate(
+  yearID = 2025,
+  votedBy = "BBWAA",
+  ballots = 394,
+  needed = 296,
+  inducted = ifelse(Votes>=296, "Y", "N"),
+  category = "Player", # pretty sure bbwaa only votes on players 
+  needed_note = NA # not sure what would go here
+)%>% relocate(Votes,.after=needed)%>%rename(votes=Votes,playerID=`First Lastname`)
+
+head(bbwaa,3)
+```
+##appending to HoF data set
+```{r combining, include = True}
+HallOfFame<-rbind(HallOfFameTable,bbwaa)
+HallOfFame %>% 
+  ggplot(aes(x = yearID, fill = inducted)) +
+  geom_bar() +
+  xlim(c(1936, 2025))
+```
+
